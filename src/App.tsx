@@ -4,13 +4,13 @@ import {
 } from 'recharts';
 import { 
   Activity, Shield, AlertTriangle, CheckCircle, RefreshCw, FileText, Zap, 
-  ChevronRight, Terminal, Gauge, Cpu, Github, Star, Share2, Layout, BookOpen, Rocket, Copy, ExternalLink
+  ChevronRight, Terminal, Gauge, Cpu, Github, Star, Share2, Layout, BookOpen, Rocket, Copy, ExternalLink, Upload, FileSearch
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import ReactMarkdown from 'react-markdown';
-import { generatePatentClaims, analyzeAlgorithmSafety, generateReadme, generateSocialPosts } from './services/geminiService';
+import { generatePatentClaims, analyzeAlgorithmSafety, generateReadme, generateSocialPosts, analyzeIngestedData } from './services/geminiService';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -29,7 +29,7 @@ interface AlgoState {
   history: any[];
 }
 
-type Tab = 'monitor' | 'readme' | 'diagrams' | 'launch';
+type Tab = 'monitor' | 'readme' | 'diagrams' | 'launch' | 'mcp' | 'ingestion';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('monitor');
@@ -43,6 +43,17 @@ export default function App() {
   const [socialPosts, setSocialPosts] = useState<string | null>(null);
   const [isGeneratingReadme, setIsGeneratingReadme] = useState(false);
   const [isGeneratingSocial, setIsGeneratingSocial] = useState(false);
+
+  const [ingestedData, setIngestedData] = useState<{ name: string, content: string } | null>(null);
+  const [ingestionAudit, setIngestionAudit] = useState<string | null>(null);
+  const [isIngesting, setIsIngesting] = useState(false);
+
+  const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
+
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
 
   const fetchState = useCallback(async () => {
     const res = await fetch('/api/algo/state');
@@ -117,15 +128,70 @@ export default function App() {
     }
   };
 
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    processIngestion(file.name, file);
+  };
+
+  const handleDemoIngestion = () => {
+    const demoContent = "NEURAL_STREAM_DATA_V2036\nTIMESTAMP: 1710330000\nDRIFT_VECTOR: [0.02, -0.01, 0.05]\nINTEGRITY_HASH: 0x88AF22";
+    processIngestion("demo_neural_stream.dat", demoContent);
+  };
+
+  const processIngestion = async (name: string, source: File | string) => {
+    setIsIngesting(true);
+    
+    const analyze = async (content: string) => {
+      setIngestedData({ name, content });
+      try {
+        const audit = await analyzeIngestedData(name, content);
+        setIngestionAudit(audit || "Failed to generate audit.");
+        showToast("Neural Stream Ingested", "success");
+      } catch (err) {
+        console.error(err);
+        showToast("Ingestion Failed", "error");
+      } finally {
+        setIsIngesting(false);
+      }
+    };
+
+    if (typeof source === 'string') {
+      analyze(source);
+    } else {
+      const reader = new FileReader();
+      reader.onload = (e) => analyze(e.target?.result as string);
+      reader.readAsText(source);
+    }
+  };
+
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
-    // Use a custom toast or just visual feedback instead of alert
+    showToast("Copied to clipboard");
   };
 
   if (!state) return <div className="min-h-screen bg-[#050505] flex items-center justify-center text-emerald-500 font-mono animate-pulse">BOOTING NEURAL-SAFETY KERNEL 2036...</div>;
 
   return (
     <div className="min-h-screen bg-[#050505] text-[#e0e0e0] font-sans overflow-x-hidden relative">
+      {/* Toast Notification */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div 
+            initial={{ opacity: 0, y: 50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 50 }}
+            className={cn(
+              "fixed bottom-8 right-8 z-[100] px-6 py-3 rounded-xl border backdrop-blur-xl shadow-2xl flex items-center gap-3",
+              toast.type === 'success' ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-500" : "bg-red-500/10 border-red-500/30 text-red-500"
+            )}
+          >
+            {toast.type === 'success' ? <CheckCircle className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
+            <span className="text-xs font-mono font-bold uppercase tracking-widest">{toast.message}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Atmospheric Background */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden">
         <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-emerald-500/10 blur-[120px] rounded-full animate-pulse" />
@@ -157,6 +223,8 @@ export default function App() {
             <TabButton active={activeTab === 'readme'} onClick={() => setActiveTab('readme')} icon={<BookOpen className="w-4 h-4" />} label="Documentation" />
             <TabButton active={activeTab === 'diagrams'} onClick={() => setActiveTab('diagrams')} icon={<Activity className="w-4 h-4" />} label="Topography" />
             <TabButton active={activeTab === 'launch'} onClick={() => setActiveTab('launch')} icon={<Rocket className="w-4 h-4" />} label="Deployment" />
+            <TabButton active={activeTab === 'mcp'} onClick={() => setActiveTab('mcp')} icon={<Terminal className="w-4 h-4" />} label="MCP Gateway" />
+            <TabButton active={activeTab === 'ingestion'} onClick={() => setActiveTab('ingestion')} icon={<Upload className="w-4 h-4" />} label="Ingestion" />
           </nav>
 
           <div className="flex items-center gap-6">
@@ -209,6 +277,36 @@ export default function App() {
                     ))}
                   </div>
                   <p className="text-[10px] font-mono text-white/20 mt-4 text-center uppercase">Transition Probability Matrix F</p>
+                </section>
+
+                <section className="glass-card p-8">
+                  <h2 className="text-xs font-black uppercase tracking-[0.3em] text-white/30 mb-8 flex items-center gap-2"><BookOpen className="w-4 h-4" /> Quick Start Guide</h2>
+                  <div className="space-y-4">
+                    <div className="text-[10px] text-white/40 leading-relaxed">
+                      <p className="mb-2"><span className="text-emerald-500 font-bold">1. ENGAGE KERNEL:</span> Start the auto-stepping engine to observe real-time drift.</p>
+                      <p className="mb-2"><span className="text-emerald-500 font-bold">2. MONITOR DRIFT:</span> Watch the Drift Arithmetic. If it exceeds 0.45, the system enters <span className="text-amber-500">STABILIZE</span> mode.</p>
+                      <p className="mb-2"><span className="text-emerald-500 font-bold">3. AUDIT DATA:</span> Use the <span className="text-blue-500">Ingestion</span> tab to upload neural streams for AI-powered safety audits.</p>
+                      <p><span className="text-emerald-500 font-bold">4. INTEGRATE:</span> Connect external agents via the <span className="text-purple-500">MCP Gateway</span>.</p>
+                    </div>
+                  </div>
+                </section>
+
+                <section className="glass-card p-8">
+                  <h2 className="text-xs font-black uppercase tracking-[0.3em] text-white/30 mb-8 flex items-center gap-2"><Shield className="w-4 h-4" /> Protection Levels</h2>
+                  <div className="space-y-4">
+                    <div className="p-4 bg-emerald-500/5 border border-emerald-500/20 rounded-2xl">
+                      <h4 className="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-1">Level 1: Observation</h4>
+                      <p className="text-[9px] text-white/40 uppercase leading-relaxed">Real-time drift monitoring & anomaly detection.</p>
+                    </div>
+                    <div className="p-4 bg-amber-500/5 border border-amber-500/20 rounded-2xl">
+                      <h4 className="text-[10px] font-black text-amber-500 uppercase tracking-widest mb-1">Level 2: Stabilization</h4>
+                      <p className="text-[9px] text-white/40 uppercase leading-relaxed">Automatic state correction to target S* manifold.</p>
+                    </div>
+                    <div className="p-4 bg-red-500/5 border border-red-500/20 rounded-2xl">
+                      <h4 className="text-[10px] font-black text-red-500 uppercase tracking-widest mb-1">Level 3: Hard Gate</h4>
+                      <p className="text-[9px] text-white/40 uppercase leading-relaxed">Deterministic blocking of invalid state transitions.</p>
+                    </div>
+                  </div>
                 </section>
 
                 <section className="glass-card p-8">
@@ -413,6 +511,167 @@ export default function App() {
               </div>
             </motion.div>
           )}
+
+          {activeTab === 'mcp' && (
+            <motion.div key="mcp" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-8">
+              {/* ... existing mcp content ... */}
+              <div className="grid grid-cols-12 gap-8">
+                <div className="col-span-12 lg:col-span-5 space-y-8">
+                  <section className="glass-card p-8">
+                    <div className="flex items-center justify-between mb-8">
+                      <h3 className="text-xs font-black uppercase tracking-[0.3em] text-white/30 flex items-center gap-2"><Cpu className="w-4 h-4" /> Neural Link Status</h3>
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+                        <span className="text-[10px] font-mono text-emerald-500">ACTIVE</span>
+                      </div>
+                    </div>
+                    <div className="p-6 bg-black/40 rounded-2xl border border-white/5 font-mono text-[10px] text-emerald-500/60 break-all relative group">
+                      mcp://dsg-kernel-2036.local:3000/neural-link/v1
+                      <button 
+                        onClick={() => copyToClipboard("mcp://dsg-kernel-2036.local:3000/neural-link/v1")}
+                        className="absolute right-4 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity p-2 bg-white/5 rounded-lg"
+                      >
+                        <Copy className="w-3 h-3" />
+                      </button>
+                    </div>
+                    <p className="mt-4 text-[10px] text-white/20 uppercase tracking-widest leading-relaxed">
+                      Use this connection string to link external AI Agents to the DSG™ Safety Kernel.
+                    </p>
+                  </section>
+
+                  <section className="glass-card p-8">
+                    <h3 className="text-xs font-black uppercase tracking-[0.3em] text-white/30 mb-8 flex items-center gap-2"><Terminal className="w-4 h-4" /> Integration Snippet (Python)</h3>
+                    <div className="bg-black/40 rounded-2xl p-6 font-mono text-[10px] text-blue-400/80 relative group mb-8">
+                      <pre className="whitespace-pre-wrap">
+{`from mcp import Client
+
+async with Client("mcp://dsg-kernel-2036.local:3000") as client:
+    # Audit current state
+    result = await client.call_tool("safety_auditor")
+    print(f"Safety Status: {result.status}")`}
+                      </pre>
+                      <button 
+                        onClick={() => copyToClipboard(`from mcp import Client\n\nasync with Client("mcp://dsg-kernel-2036.local:3000") as client:\n    result = await client.call_tool("safety_auditor")\n    print(f"Safety Status: {result.status}")`)}
+                        className="absolute right-4 top-4 opacity-0 group-hover:opacity-100 transition-opacity p-2 bg-white/5 rounded-lg"
+                      >
+                        <Copy className="w-3 h-3" />
+                      </button>
+                    </div>
+
+                    <h3 className="text-xs font-black uppercase tracking-[0.3em] text-white/30 mb-8 flex items-center gap-2"><Terminal className="w-4 h-4" /> Exposed Tools</h3>
+                    <div className="space-y-4">
+                      <MCPToolItem 
+                        name="safety_auditor" 
+                        desc="Analyzes system state history for deterministic violations." 
+                        status="READY"
+                      />
+                      <MCPToolItem 
+                        name="patent_architect" 
+                        desc="Synthesizes formal US Utility Patent claims." 
+                        status="READY"
+                      />
+                      <MCPToolItem 
+                        name="doc_synthesizer" 
+                        desc="Generates high-conversion technical documentation." 
+                        status="READY"
+                      />
+                    </div>
+                  </section>
+                </div>
+
+                <div className="col-span-12 lg:col-span-7">
+                  <section className="glass-card p-8 h-full">
+                    <h3 className="text-xs font-black uppercase tracking-[0.3em] text-white/30 mb-8 flex items-center gap-2"><Activity className="w-4 h-4" /> Live Integration Logs</h3>
+                    <div className="bg-black/40 rounded-2xl p-6 h-[400px] font-mono text-[10px] overflow-y-auto space-y-2">
+                      <p className="text-white/20">[{new Date().toISOString()}] Initializing MCP Server...</p>
+                      <p className="text-emerald-500/60">[{new Date().toISOString()}] Tool 'safety_auditor' registered successfully.</p>
+                      <p className="text-emerald-500/60">[{new Date().toISOString()}] Tool 'patent_architect' registered successfully.</p>
+                      <p className="text-emerald-500/60">[{new Date().toISOString()}] Tool 'doc_synthesizer' registered successfully.</p>
+                      <p className="text-white/40">[{new Date().toISOString()}] Awaiting external Neural Link connection...</p>
+                      <motion.p 
+                        initial={{ opacity: 0 }} 
+                        animate={{ opacity: [0, 1, 0] }} 
+                        transition={{ repeat: Infinity, duration: 2 }}
+                        className="text-emerald-500"
+                      >
+                        _
+                      </motion.p>
+                    </div>
+                  </section>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {activeTab === 'ingestion' && (
+            <motion.div key="ingestion" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-8">
+              <div className="grid grid-cols-12 gap-8">
+                <div className="col-span-12 lg:col-span-4 space-y-8">
+                  <section className="glass-card p-8">
+                    <h3 className="text-xs font-black uppercase tracking-[0.3em] text-white/30 mb-8 flex items-center gap-2"><Upload className="w-4 h-4" /> Neural Data Ingestion</h3>
+                    <div className="space-y-6">
+                      <div className="relative group">
+                        <input 
+                          type="file" 
+                          onChange={handleFileUpload}
+                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                        />
+                        <div className="border-2 border-dashed border-white/10 rounded-2xl p-10 flex flex-col items-center justify-center text-center group-hover:border-emerald-500/30 transition-all">
+                          <Upload className="w-10 h-10 text-white/10 mb-4 group-hover:text-emerald-500/50 transition-all" />
+                          <p className="text-[10px] font-mono text-white/30 uppercase tracking-widest">Drop Neural Stream or Click to Upload</p>
+                        </div>
+                      </div>
+
+                      <button 
+                        onClick={handleDemoIngestion}
+                        className="w-full py-4 bg-white/5 border border-white/10 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-white/10 transition-all flex items-center justify-center gap-2"
+                      >
+                        <Zap className="w-4 h-4 text-amber-500" />
+                        Simulate Neural Stream Ingestion
+                      </button>
+                      
+                      {ingestedData && (
+                        <div className="p-4 bg-emerald-500/5 border border-emerald-500/20 rounded-xl flex items-center gap-4">
+                          <FileText className="w-6 h-6 text-emerald-500" />
+                          <div className="flex-1 overflow-hidden">
+                            <p className="text-[10px] font-mono text-white truncate">{ingestedData.name}</p>
+                            <p className="text-[8px] font-mono text-white/30 uppercase">Ready for Audit</p>
+                          </div>
+                          {isIngesting && <RefreshCw className="w-4 h-4 text-emerald-500 animate-spin" />}
+                        </div>
+                      )}
+                    </div>
+                  </section>
+
+                  <section className="glass-card p-8">
+                    <h3 className="text-xs font-black uppercase tracking-[0.3em] text-white/30 mb-8 flex items-center gap-2"><Shield className="w-4 h-4" /> Ingestion Protocols</h3>
+                    <div className="space-y-4">
+                      <ProtocolItem icon={<CheckCircle className="w-3 h-3" />} label="Deterministic Validation" />
+                      <ProtocolItem icon={<CheckCircle className="w-3 h-3" />} label="Neural Drift Check" />
+                      <ProtocolItem icon={<CheckCircle className="w-3 h-3" />} label="Structural Integrity" />
+                    </div>
+                  </section>
+                </div>
+
+                <div className="col-span-12 lg:col-span-8">
+                  {ingestionAudit ? (
+                    <div className="glass-card p-10 min-h-[500px] relative prose prose-invert prose-emerald max-w-none">
+                      <div className="flex items-center gap-2 mb-8 border-b border-white/5 pb-4">
+                        <FileSearch className="w-5 h-5 text-emerald-500" />
+                        <h3 className="text-xs font-black uppercase tracking-[0.3em] text-white/60 m-0">Ingestion Audit Report</h3>
+                      </div>
+                      <ReactMarkdown>{ingestionAudit}</ReactMarkdown>
+                    </div>
+                  ) : (
+                    <div className="glass-card p-24 flex flex-col items-center justify-center text-center h-full border-dashed border-white/10">
+                      <Cpu className="w-16 h-16 text-white/5 mb-6" />
+                      <p className="text-xs font-mono uppercase text-white/20 tracking-widest">Awaiting Neural Data Stream...</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          )}
         </AnimatePresence>
       </main>
 
@@ -606,6 +865,27 @@ function RoadmapStep({ step, label, desc, active }: { step: string, label: strin
         <h4 className="text-[10px] font-black text-white uppercase tracking-widest mb-1">{label}</h4>
         <p className="text-[9px] font-mono text-white/30 uppercase">{desc}</p>
       </div>
+    </div>
+  );
+}
+
+function MCPToolItem({ name, desc, status }: { name: string, desc: string, status: string }) {
+  return (
+    <div className="p-4 bg-white/5 rounded-2xl border border-white/5 group hover:border-emerald-500/30 transition-all">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-[10px] font-mono text-emerald-500">{name}</span>
+        <span className="text-[8px] font-black bg-emerald-500/10 text-emerald-500 px-2 py-0.5 rounded uppercase">{status}</span>
+      </div>
+      <p className="text-[10px] text-white/40 leading-relaxed">{desc}</p>
+    </div>
+  );
+}
+
+function ProtocolItem({ icon, label }: { icon: React.ReactNode, label: string }) {
+  return (
+    <div className="flex items-center gap-3 p-3 bg-white/5 rounded-xl border border-white/5">
+      <div className="text-emerald-500">{icon}</div>
+      <span className="text-[10px] font-mono text-white/60 uppercase tracking-wider">{label}</span>
     </div>
   );
 }

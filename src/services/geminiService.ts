@@ -76,3 +76,23 @@ export async function generateSocialPosts(platform: string) {
     });
     return response.text;
 }
+
+export async function analyzeIngestedData(fileName: string, content: string) {
+  const response = await ai.models.generateContent({
+    model: "gemini-3-flash-preview",
+    contents: `
+      You are the DSG™ Safety Kernel. You have received a new data stream for ingestion.
+      File Name: ${fileName}
+      Content: ${content}
+      
+      Analyze this data for:
+      1. Deterministic Safety Violations
+      2. Neural Drift Potential
+      3. Structural Integrity
+      
+      Provide a formal "Ingestion Audit Report" in Markdown.
+    `,
+  });
+
+  return response.text;
+}
